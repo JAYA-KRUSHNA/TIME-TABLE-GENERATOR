@@ -1,0 +1,249 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Profile {
+  id                    String   @id @default(uuid())
+  role                  String   // student, faculty, admin, superadmin
+  name                  String
+  email                 String   @unique
+  password              String
+  reg_no                String?  @unique
+  year                  Int?
+  section               String?
+  department            String?  @default("CSE")
+  status                String   @default("active") // active, pending, rejected, unverified
+  is_original_superadmin Boolean @default(false)
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+
+  sentMessages     Message[]   @relation("sender")
+  facultySubjects  FacultySubject[]
+  facultySchedules FacultySchedule[]
+  facultyAssignments FacultyAssignment[]
+  notifications    Notification[]
+}
+
+model Department {
+  id         String   @id @default(uuid())
+  name       String
+  code       String   @unique
+  created_at DateTime @default(now())
+
+  sections   Section[]
+  subjects   Subject[]
+  classes    Class[]
+  calendar   AcademicCalendar[]
+}
+
+model Section {
+  id            String   @id @default(uuid())
+  department_id String
+  year          Int
+  section_name  String
+  student_count Int      @default(0)
+  max_capacity  Int      @default(70)
+  created_at    DateTime @default(now())
+
+  department Department @relation(fields: [department_id], references: [id])
+  classes    Class[]
+}
+
+model Subject {
+  id             String   @id @default(uuid())
+  name           String
+  department_id  String
+  type           String   // theory, lab
+  hours_per_week Int      @default(3)
+  lab_type_id    String?
+  created_at     DateTime @default(now())
+
+  department      Department       @relation(fields: [department_id], references: [id])
+  labType         LabType?         @relation(fields: [lab_type_id], references: [id])
+  timetables      Timetable[]
+  facultySubjects FacultySubject[]
+  facultySchedules FacultySchedule[]
+  facultyAssignments FacultyAssignment[]
+}
+
+model LabType {
+  id   String @id @default(uuid())
+  name String @unique
+
+  labs     Lab[]
+  subjects Subject[]
+}
+
+model Lab {
+  id          String @id @default(uuid())
+  name        String
+  lab_type_id String
+  capacity    Int    @default(30)
+
+  labType    LabType     @relation(fields: [lab_type_id], references: [id])
+  timetables Timetable[]
+  schedules  LabSchedule[]
+}
+
+model Room {
+  id       String @id @default(uuid())
+  name     String
+  capacity Int    @default(70)
+
+  timetables Timetable[]
+  schedules  RoomSchedule[]
+}
+
+model Class {
+  id            String @id @default(uuid())
+  department_id String
+  year          Int
+  section_id    String
+
+  department   Department        @relation(fields: [department_id], references: [id])
+  section      Section           @relation(fields: [section_id], references: [id])
+  timetables   Timetable[]
+  facultySchedules FacultySchedule[]
+  roomSchedules    RoomSchedule[]
+  labSchedules     LabSchedule[]
+  extracurriculars Extracurricular[]
+  facultyAssignments FacultyAssignment[]
+}
+
+model Timetable {
+  id         String  @id @default(uuid())
+  class_id   String
+  day        String
+  period     Int
+  subject_id String?
+  room_id    String?
+  lab_id     String?
+
+  class   Class    @relation(fields: [class_id], references: [id])
+  subject Subject? @relation(fields: [subject_id], references: [id])
+  room    Room?    @relation(fields: [room_id], references: [id])
+  lab     Lab?     @relation(fields: [lab_id], references: [id])
+}
+
+model FacultySubject {
+  id         String @id @default(uuid())
+  faculty_id String
+  subject_id String
+
+  faculty Profile @relation(fields: [faculty_id], references: [id])
+  subject Subject @relation(fields: [subject_id], references: [id])
+
+  @@unique([faculty_id, subject_id])
+}
+
+model FacultySchedule {
+  id         String  @id @default(uuid())
+  faculty_id String
+  day        String
+  period     Int
+  class_id   String
+  subject_id String?
+
+  faculty Profile  @relation(fields: [faculty_id], references: [id])
+  class   Class    @relation(fields: [class_id], references: [id])
+  subject Subject? @relation(fields: [subject_id], references: [id])
+}
+
+model FacultyAssignment {
+  id         String @id @default(uuid())
+  faculty_id String
+  class_id   String
+  subject_id String
+
+  faculty Profile @relation(fields: [faculty_id], references: [id])
+  class   Class   @relation(fields: [class_id], references: [id])
+  subject Subject @relation(fields: [subject_id], references: [id])
+}
+
+model RoomSchedule {
+  id       String @id @default(uuid())
+  room_id  String
+  day      String
+  period   Int
+  class_id String
+
+  room  Room  @relation(fields: [room_id], references: [id])
+  class Class @relation(fields: [class_id], references: [id])
+}
+
+model LabSchedule {
+  id       String @id @default(uuid())
+  lab_id   String
+  day      String
+  period   Int
+  class_id String
+
+  lab   Lab   @relation(fields: [lab_id], references: [id])
+  class Class @relation(fields: [class_id], references: [id])
+}
+
+model Extracurricular {
+  id              String @id @default(uuid())
+  class_id        String
+  activity_name   String
+  periods_per_week Int
+
+  class Class @relation(fields: [class_id], references: [id])
+}
+
+model Conversation {
+  id              String   @id @default(uuid())
+  type            String   @default("direct") // direct, broadcast
+  participant_ids String   // JSON array of user IDs
+  created_at      DateTime @default(now())
+
+  messages Message[]
+}
+
+model Message {
+  id              String   @id @default(uuid())
+  conversation_id String
+  sender_id       String
+  content         String
+  read_status     Boolean  @default(false)
+  created_at      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversation_id], references: [id])
+  sender       Profile      @relation("sender", fields: [sender_id], references: [id])
+}
+
+model Notification {
+  id         String   @id @default(uuid())
+  user_id    String
+  type       String
+  title      String
+  body       String
+  read       Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  user Profile @relation(fields: [user_id], references: [id])
+}
+
+model AcademicCalendar {
+  id            String   @id @default(uuid())
+  department_id String?
+  date          String
+  event_type    String
+  description   String
+  created_at    DateTime @default(now())
+
+  department Department? @relation(fields: [department_id], references: [id])
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  action       String
+  target_table String
+  user_id      String
+  created_at   DateTime @default(now())
+}
