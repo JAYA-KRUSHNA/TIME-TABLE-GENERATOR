@@ -789,38 +789,39 @@ export async function POST(request: NextRequest) {
         }
 
         // ═══════════════════════════════════════════
-        // PHASE 4: FORCE-FILL — no constraints, just place everything
+        // PHASE 4: FORCE-FILL — place remaining with scoring (best available slot)
         // ═══════════════════════════════════════════
         console.log(`\n▶ PHASE 4: FORCE-FILL`);
         for (const ci of classInfos) {
             const unfinished = ci.requirements.filter(r => r.remaining > 0);
             for (const subj of unfinished) {
                 while (subj.remaining > 0) {
-                    let placed = false;
+                    let bestSlot: { day: string; period: number; score: number } | null = null;
                     for (const day of DAYS) {
-                        if (placed) break;
                         for (let p = 1; p <= periods_per_day; p++) {
                             const sk = `${day}_${p}`;
                             if (idx.isClassSlotUsed(ci.classId, sk)) continue;
-
-                            const a: Assignment = {
-                                class_id: ci.classId, day, period: p,
-                                subject_id: subj.id, subject_name: subj.name,
-                            };
-                            if (subj.isFree) a.is_free = true;
-                            if (!subj.isFree) {
-                                const roomId = findRoom(sk, ci, subj.type === 'lab' ? 'lab' : 'theory');
-                                if (roomId) a.room_id = roomId;
+                            const score = subj.isFree ? 0 : scoreSlot(ci, subj, day, p);
+                            if (!bestSlot || score > bestSlot.score) {
+                                bestSlot = { day, period: p, score };
                             }
-                            allAssignments.push(a);
-                            idx.addAssignment(a);
-                            subj.remaining--;
-                            placed = true;
-                            console.log(`  ✓ Force "${subj.name}" → ${day} P${p}`);
-                            break;
                         }
                     }
-                    if (!placed) {
+                    if (bestSlot) {
+                        const a: Assignment = {
+                            class_id: ci.classId, day: bestSlot.day, period: bestSlot.period,
+                            subject_id: subj.id, subject_name: subj.name,
+                        };
+                        if (subj.isFree) a.is_free = true;
+                        if (!subj.isFree) {
+                            const roomId = findRoom(`${bestSlot.day}_${bestSlot.period}`, ci, subj.type === 'lab' ? 'lab' : 'theory');
+                            if (roomId) a.room_id = roomId;
+                        }
+                        allAssignments.push(a);
+                        idx.addAssignment(a);
+                        subj.remaining--;
+                        console.log(`  ✓ Force "${subj.name}" → ${bestSlot.day} P${bestSlot.period}`);
+                    } else {
                         conflicts.push(`ALL slots used for "${subj.name}" in ${ci.sectionLabel}`);
                         console.log(`  ✗ Force "${subj.name}" — ALL slots used`);
                         break;
@@ -830,26 +831,40 @@ export async function POST(request: NextRequest) {
         }
 
         // ═══════════════════════════════════════════
-        // PHASE 5: FACULTY ASSIGNMENT (ALL-or-NOTHING)
+        // PHASE 5: FACULTY ASSIGNMENT
         //   Rules:
-        //   - Faculty teaches ONE subject (+lab) for ONE section in ONE year
+        //   - One subject (+lab) per faculty per year, one section only
         //   - Must cover ALL slots (theory + lab) or not assigned at all
-        //   - Priority: interested faculty → non-interested (lowest workload)
-        //   - If nobody can cover all → unassigned for that section
+        //   - Priority: interested (FCFS) → non-interested (workload) → cross-year
+        //   - Cross-year: faculty from other years CAN teach here if no schedule clash
+        //   - If nobody fits → unassigned (◈)
         // ═══════════════════════════════════════════
-        console.log(`\n▶ PHASE 5: FACULTY ASSIGNMENT (ALL-or-NOTHING)`);
+        console.log(`\n▶ PHASE 5: FACULTY ASSIGNMENT`);
 
-        // Track which faculty are already committed (faculty_id → true)
-        const assignedFaculty = new Set<string>();
+        // Per-year tracking: "facultyId|year" → baseName
+        // A faculty committed in Year 1 can still teach in Year 2 (cross-year)
+        const facultyYearCommit = new Map<string, string>();
 
-        // Pre-fill from existing schedules (other timetables)
-        for (const fs of existingFaculty.filter(f => !classIdSet.has(f.class_id))) {
-            assignedFaculty.add(fs.faculty_id);
+        // Pre-fill from existing assignments (timetables NOT being regenerated)
+        try {
+            const existingFA = db.prepare(`
+                SELECT fa.faculty_id, c.year, s.name as subject_name
+                FROM faculty_assignments fa
+                JOIN classes c ON fa.class_id = c.id
+                JOIN subjects s ON fa.subject_id = s.id
+            `).all() as { faculty_id: string; year: number; subject_name: string }[];
+            for (const ea of existingFA) {
+                if (classIdSet.has(ea.faculty_id)) continue; // skip classes being regenerated
+                const baseName = ea.subject_name.replace(/ LAB$/i, '');
+                const yk = `${ea.faculty_id}|${ea.year}`;
+                if (!facultyYearCommit.has(yk)) facultyYearCommit.set(yk, baseName);
+            }
+        } catch (e) {
+            console.log(`  ⚠ Could not pre-load faculty assignments: ${(e as Error).message}`);
         }
 
         for (const ci of classInfos) {
             // Group ALL slots by subject base name (theory + lab combined)
-            // e.g., "Math" theory slots + "Math LAB" lab slots → one group
             const baseNameGroups = new Map<string, { slots: Assignment[]; subjectIds: Set<string> }>();
             for (const a of allAssignments) {
                 if (a.class_id !== ci.classId || a.is_free) continue;
@@ -865,40 +880,40 @@ export async function POST(request: NextRequest) {
             for (const [baseName, group] of baseNameGroups) {
                 const { slots, subjectIds } = group;
 
-                // Collect ALL candidate lists from all subject IDs in this group
-                const candidateSet = new Set<string>();
-                const interestedSet = new Set<string>();
+                // --- Build candidate list fresh (not from Phase 0's filtered map) ---
+                // Stage 1: Interested faculty (FCFS by created_at)
+                const interestedIds: string[] = [];
                 for (const sid of subjectIds) {
-                    const candidates = ci.facultyMap.get(sid);
-                    if (candidates) {
-                        for (const fid of candidates) candidateSet.add(fid);
+                    for (const i of allInterests.filter(x => x.subject_id === sid)) {
+                        if (!interestedIds.includes(i.faculty_id)) interestedIds.push(i.faculty_id);
                     }
-                    // Check who expressed interest
-                    const interested = allInterests.filter(i => i.subject_id === sid);
-                    for (const i of interested) interestedSet.add(i.faculty_id);
                 }
 
-                if (candidateSet.size === 0) {
-                    console.log(`  ◈ No candidates for "${baseName}" in ${ci.sectionLabel}`);
+                // Stage 2: ALL remaining active faculty sorted by lowest workload
+                const interestedSet = new Set(interestedIds);
+                const restIds = allFaculty
+                    .filter(f => !interestedSet.has(f.id))
+                    .sort((a, b) => (facultyTotalLoad.get(a.id) ?? 0) - (facultyTotalLoad.get(b.id) ?? 0))
+                    .map(f => f.id);
+
+                // Combined: interested FCFS first, then everyone else by workload
+                // This naturally includes cross-year faculty (Year 1 teachers etc.)
+                const candidateList = [...interestedIds, ...restIds];
+
+                if (candidateList.length === 0) {
+                    console.log(`  ◈ No faculty available for "${baseName}" in ${ci.sectionLabel}`);
                     continue;
                 }
 
-                // Sort: interested first, then non-interested by lowest workload
-                const interestedCandidates = [...candidateSet]
-                    .filter(fid => interestedSet.has(fid))
-                    .sort((a, b) => (facultyTotalLoad.get(a) ?? 0) - (facultyTotalLoad.get(b) ?? 0));
-                const nonInterestedCandidates = [...candidateSet]
-                    .filter(fid => !interestedSet.has(fid))
-                    .sort((a, b) => (facultyTotalLoad.get(a) ?? 0) - (facultyTotalLoad.get(b) ?? 0));
-                const orderedCandidates = [...interestedCandidates, ...nonInterestedCandidates];
-
                 let assigned = false;
 
-                for (const fid of orderedCandidates) {
-                    // Already committed to another subject this year? Skip.
-                    if (assignedFaculty.has(fid)) continue;
+                for (const fid of candidateList) {
+                    // Per-year constraint: already committed in THIS year? Skip.
+                    // (But committed in another year is OK — cross-year allowed)
+                    const yk = `${fid}|${ci.year}`;
+                    if (facultyYearCommit.has(yk)) continue;
 
-                    // ALL-or-NOTHING: check if this faculty can cover EVERY slot
+                    // ALL-or-NOTHING: must cover EVERY slot (theory + lab)
                     let canCoverAll = true;
                     for (const slot of slots) {
                         if (isFacultyBlocked(fid, slot.day, slot.period)) {
@@ -913,12 +928,12 @@ export async function POST(request: NextRequest) {
                         slot.faculty_id = fid;
                         idx.addFacultySlot(fid, slot.day, slot.period);
                     }
-                    assignedFaculty.add(fid);
+                    facultyYearCommit.set(yk, baseName);
                     facultyTotalLoad.set(fid, (facultyTotalLoad.get(fid) ?? 0) + slots.length);
                     assigned = true;
 
-                    const isInterested = interestedSet.has(fid) ? '★' : '○';
-                    console.log(`  ✓ ${isInterested} Faculty for "${baseName}" in ${ci.sectionLabel}: ${fid} (${slots.length}/${slots.length} slots)`);
+                    const tag = interestedSet.has(fid) ? '★' : '○';
+                    console.log(`  ✓ ${tag} Faculty for "${baseName}" in ${ci.sectionLabel}: ${fid} (${slots.length} slots)`);
                     break;
                 }
 
@@ -932,7 +947,7 @@ export async function POST(request: NextRequest) {
         // PHASE 6: SIMULATED ANNEALING
         // ═══════════════════════════════════════════
         console.log(`\n▶ PHASE 6: ANNEAL (${allAssignments.length} slots)`);
-        const MAX_ITERATIONS = 500;
+        const MAX_ITERATIONS = Math.max(500, allAssignments.length * 5);
         let improvements = 0;
         let temperature = 1.0;
         const coolingRate = 0.995;
