@@ -4,7 +4,8 @@ import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { GraduationCap, BookOpen, Shield } from 'lucide-react';
 import { useState } from 'react';
-import ParticleField from '@/components/landing/ParticleField';
+import AnimatedGridBackground from '@/components/landing/AnimatedGridBackground';
+import GlowingOrb from '@/components/landing/GlowingOrb';
 
 const roles = [
     {
@@ -14,6 +15,8 @@ const roles = [
         icon: GraduationCap,
         href: '/auth/student/login',
         gradient: 'linear-gradient(135deg, #6366f1, #818cf8)',
+        shadowColor: 'rgba(99,102,241,0.3)',
+        borderColor: 'rgba(99,102,241,0.25)',
     },
     {
         id: 'faculty',
@@ -22,6 +25,8 @@ const roles = [
         icon: BookOpen,
         href: '/auth/faculty/login',
         gradient: 'linear-gradient(135deg, #8b5cf6, #a78bfa)',
+        shadowColor: 'rgba(139,92,246,0.3)',
+        borderColor: 'rgba(139,92,246,0.25)',
     },
     {
         id: 'admin',
@@ -30,17 +35,18 @@ const roles = [
         icon: Shield,
         href: '/auth/admin/login',
         gradient: 'linear-gradient(135deg, #ec4899, #f472b6)',
+        shadowColor: 'rgba(236,72,153,0.3)',
+        borderColor: 'rgba(236,72,153,0.25)',
     },
 ];
 
-function TiltCard({
+function TiltCard3D({
     children,
-    className = '',
 }: {
     children: React.ReactNode;
-    className?: string;
 }) {
-    const [transform, setTransform] = useState('perspective(1000px) rotateX(0) rotateY(0)');
+    const [transform, setTransform] = useState('perspective(1000px) rotateX(0) rotateY(0) translateZ(0)');
+    const [glowPos, setGlowPos] = useState({ x: 50, y: 50 });
 
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
         const rect = e.currentTarget.getBoundingClientRect();
@@ -48,26 +54,41 @@ function TiltCard({
         const y = e.clientY - rect.top;
         const centerX = rect.width / 2;
         const centerY = rect.height / 2;
-        const rotateX = ((y - centerY) / centerY) * -8;
-        const rotateY = ((x - centerX) / centerX) * 8;
-        setTransform(`perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`);
+        const rotateX = ((y - centerY) / centerY) * -10;
+        const rotateY = ((x - centerX) / centerX) * 10;
+        setTransform(`perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateZ(30px)`);
+        setGlowPos({ x: (x / rect.width) * 100, y: (y / rect.height) * 100 });
     };
 
     const handleMouseLeave = () => {
-        setTransform('perspective(1000px) rotateX(0) rotateY(0)');
+        setTransform('perspective(1000px) rotateX(0) rotateY(0) translateZ(0)');
+        setGlowPos({ x: 50, y: 50 });
     };
 
     return (
         <div
-            className={className}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
             style={{
                 transform,
                 transition: 'transform 0.15s ease-out',
                 transformStyle: 'preserve-3d',
+                position: 'relative',
             }}
         >
+            {/* Dynamic glow that follows cursor */}
+            <div
+                style={{
+                    position: 'absolute',
+                    inset: -1,
+                    borderRadius: 22,
+                    background: `radial-gradient(circle at ${glowPos.x}% ${glowPos.y}%, rgba(99,102,241,0.15) 0%, transparent 60%)`,
+                    pointerEvents: 'none',
+                    opacity: transform.includes('translateZ(30px)') ? 1 : 0,
+                    transition: 'opacity 0.3s ease',
+                    zIndex: 0,
+                }}
+            />
             {children}
         </div>
     );
@@ -77,7 +98,10 @@ export default function SelectRolePage() {
     const router = useRouter();
 
     return (
-        <div
+        <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
             style={{
                 minHeight: '100vh',
                 display: 'flex',
@@ -85,31 +109,57 @@ export default function SelectRolePage() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 position: 'relative',
-                background: 'linear-gradient(180deg, #030712 0%, #0f172a 50%, #1e1b4b 100%)',
+                background: 'linear-gradient(180deg, #030712 0%, #0a0f1e 30%, #0f172a 60%, #1e1b4b 100%)',
                 padding: '40px 20px',
+                overflow: 'hidden',
             }}
         >
-            <ParticleField />
+            <AnimatedGridBackground />
+            <GlowingOrb color="rgba(99, 102, 241, 0.1)" size={400} top="20%" left="70%" delay={0} />
+            <GlowingOrb color="rgba(139, 92, 246, 0.07)" size={350} top="60%" left="10%" delay={2} />
 
             <div style={{ position: 'relative', zIndex: 10, width: '100%', maxWidth: 1100 }}>
                 {/* Header */}
                 <motion.div
-                    initial={{ opacity: 0, y: -20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.6 }}
+                    initial={{ opacity: 0, y: -30, rotateX: -10 }}
+                    animate={{ opacity: 1, y: 0, rotateX: 0 }}
+                    transition={{ duration: 0.7 }}
                     style={{ textAlign: 'center', marginBottom: 60 }}
                 >
-                    <h1
+                    {/* Logo */}
+                    <motion.div
+                        initial={{ scale: 0, rotateY: -180 }}
+                        animate={{ scale: 1, rotateY: 0 }}
+                        transition={{ duration: 0.8, ease: [0.175, 0.885, 0.32, 1.275] }}
                         style={{
-                            fontSize: 'clamp(28px, 5vw, 42px)',
-                            fontWeight: 700,
-                            background: 'linear-gradient(135deg, #e2e8f0, #fff)',
-                            WebkitBackgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent',
-                            marginBottom: 12,
+                            width: 56,
+                            height: 56,
+                            borderRadius: 16,
+                            background: 'linear-gradient(135deg, #6366f1, #818cf8)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            margin: '0 auto 24px',
+                            boxShadow: '0 0 40px rgba(99,102,241,0.3)',
                         }}
                     >
-                        Welcome to OptiSchedule
+                        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                            <line x1="16" y1="2" x2="16" y2="6" />
+                            <line x1="8" y1="2" x2="8" y2="6" />
+                            <line x1="3" y1="10" x2="21" y2="10" />
+                        </svg>
+                    </motion.div>
+
+                    <h1
+                        style={{
+                            fontSize: 'clamp(28px, 5vw, 44px)',
+                            fontWeight: 700,
+                            marginBottom: 12,
+                            letterSpacing: '-0.5px',
+                        }}
+                    >
+                        <span className="text-shimmer">Welcome to OptiSchedule</span>
                     </h1>
                     <p style={{ color: '#94a3b8', fontSize: 'clamp(14px, 2vw, 17px)' }}>
                         Select your role to continue
@@ -124,36 +174,57 @@ export default function SelectRolePage() {
                         gap: 32,
                         maxWidth: 1000,
                         margin: '0 auto',
+                        perspective: '1200px',
                     }}
                 >
                     {roles.map((role, index) => (
                         <motion.div
                             key={role.id}
-                            initial={{ opacity: 0, y: 40 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.6, delay: index * 0.15 }}
+                            initial={{ opacity: 0, y: 50, rotateY: -30, scale: 0.9 }}
+                            animate={{ opacity: 1, y: 0, rotateY: 0, scale: 1 }}
+                            transition={{
+                                duration: 0.7,
+                                delay: 0.2 + index * 0.15,
+                                ease: [0.175, 0.885, 0.32, 1.275],
+                            }}
+                            style={{ transformStyle: 'preserve-3d' }}
                         >
-                            <TiltCard>
+                            <TiltCard3D>
                                 <div
-                                    className="glass-card"
+                                    className="role-card-shine"
                                     onClick={() => router.push(role.href)}
                                     style={{
-                                        padding: '40px 32px',
+                                        padding: '44px 32px',
                                         cursor: 'pointer',
                                         textAlign: 'center',
                                         position: 'relative',
                                         overflow: 'hidden',
+                                        borderRadius: 22,
+                                        background: 'rgba(15, 23, 42, 0.5)',
+                                        backdropFilter: 'blur(16px)',
+                                        WebkitBackdropFilter: 'blur(16px)',
+                                        border: '1px solid rgba(99, 102, 241, 0.12)',
+                                        transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                                        transformStyle: 'preserve-3d',
+                                    }}
+                                    onMouseEnter={e => {
+                                        e.currentTarget.style.borderColor = role.borderColor;
+                                        e.currentTarget.style.boxShadow = `0 25px 60px rgba(0,0,0,0.3), 0 0 40px ${role.shadowColor}`;
+                                    }}
+                                    onMouseLeave={e => {
+                                        e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.12)';
+                                        e.currentTarget.style.boxShadow = 'none';
                                     }}
                                 >
-                                    {/* Glow effect */}
+                                    {/* Top glow */}
                                     <div
                                         style={{
                                             position: 'absolute',
-                                            top: -50,
+                                            top: -60,
                                             left: '50%',
                                             transform: 'translateX(-50%)',
-                                            width: 200,
-                                            height: 200,
+                                            width: 250,
+                                            height: 250,
                                             background: role.gradient,
                                             opacity: 0.06,
                                             borderRadius: '50%',
@@ -162,30 +233,34 @@ export default function SelectRolePage() {
                                     />
 
                                     {/* Icon */}
-                                    <div
+                                    <motion.div
+                                        whileHover={{ scale: 1.08, rotateY: 10 }}
+                                        transition={{ type: 'spring', stiffness: 300 }}
                                         style={{
-                                            width: 72,
-                                            height: 72,
-                                            borderRadius: '20px',
+                                            width: 76,
+                                            height: 76,
+                                            borderRadius: '22px',
                                             background: role.gradient,
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
                                             margin: '0 auto 24px',
-                                            boxShadow: `0 8px 30px ${role.gradient.includes('6366f1') ? 'rgba(99,102,241,0.3)' : role.gradient.includes('8b5cf6') ? 'rgba(139,92,246,0.3)' : 'rgba(236,72,153,0.3)'}`,
+                                            boxShadow: `0 12px 35px ${role.shadowColor}`,
                                             position: 'relative',
+                                            transform: 'translateZ(20px)',
                                         }}
                                     >
-                                        <role.icon size={32} color="white" />
-                                    </div>
+                                        <role.icon size={34} color="white" />
+                                    </motion.div>
 
                                     {/* Title */}
                                     <h3
                                         style={{
-                                            fontSize: 22,
-                                            fontWeight: 600,
+                                            fontSize: 23,
+                                            fontWeight: 700,
                                             color: '#f1f5f9',
                                             marginBottom: 12,
+                                            transform: 'translateZ(15px)',
                                         }}
                                     >
                                         {role.title}
@@ -196,28 +271,31 @@ export default function SelectRolePage() {
                                         style={{
                                             fontSize: 14,
                                             color: '#94a3b8',
-                                            lineHeight: 1.6,
-                                            marginBottom: 24,
+                                            lineHeight: 1.7,
+                                            marginBottom: 28,
+                                            transform: 'translateZ(10px)',
                                         }}
                                     >
                                         {role.description}
                                     </p>
 
                                     {/* Enter button */}
-                                    <div
+                                    <motion.div
+                                        whileHover={{ x: 4 }}
                                         style={{
                                             display: 'inline-flex',
                                             alignItems: 'center',
-                                            gap: 6,
+                                            gap: 8,
                                             color: '#818cf8',
-                                            fontSize: 14,
-                                            fontWeight: 500,
+                                            fontSize: 15,
+                                            fontWeight: 600,
+                                            transform: 'translateZ(10px)',
                                         }}
                                     >
                                         Enter Portal
                                         <svg
-                                            width="16"
-                                            height="16"
+                                            width="18"
+                                            height="18"
                                             viewBox="0 0 24 24"
                                             fill="none"
                                             stroke="currentColor"
@@ -227,9 +305,9 @@ export default function SelectRolePage() {
                                         >
                                             <polyline points="9 18 15 12 9 6" />
                                         </svg>
-                                    </div>
+                                    </motion.div>
                                 </div>
-                            </TiltCard>
+                            </TiltCard3D>
                         </motion.div>
                     ))}
                 </div>
@@ -238,10 +316,11 @@ export default function SelectRolePage() {
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    transition={{ delay: 0.8 }}
-                    style={{ textAlign: 'center', marginTop: 40 }}
+                    transition={{ delay: 1 }}
+                    style={{ textAlign: 'center', marginTop: 44 }}
                 >
-                    <button
+                    <motion.button
+                        whileHover={{ x: -4 }}
                         onClick={() => router.push('/')}
                         style={{
                             background: 'none',
@@ -253,7 +332,10 @@ export default function SelectRolePage() {
                             alignItems: 'center',
                             gap: 6,
                             fontFamily: "'Inter', sans-serif",
+                            transition: 'color 0.2s ease',
                         }}
+                        onMouseEnter={e => { e.currentTarget.style.color = '#94a3b8'; }}
+                        onMouseLeave={e => { e.currentTarget.style.color = '#64748b'; }}
                     >
                         <svg
                             width="16"
@@ -268,9 +350,9 @@ export default function SelectRolePage() {
                             <polyline points="15 18 9 12 15 6" />
                         </svg>
                         Back to Home
-                    </button>
+                    </motion.button>
                 </motion.div>
             </div>
-        </div>
+        </motion.div>
     );
 }
