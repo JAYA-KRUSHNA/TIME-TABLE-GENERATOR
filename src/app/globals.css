@@ -565,3 +565,56 @@ h6 {
     box-shadow: 0 0 20px rgba(99, 102, 241, 0.08);
   }
 }
+
+/* PDF Export — Print Styles */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #student-timetable,
+  #student-timetable *,
+  #print-area,
+  #print-area * {
+    visibility: visible;
+  }
+
+  #student-timetable,
+  #print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+
+  #student-timetable table,
+  #print-area table {
+    background: white !important;
+    color: #000 !important;
+  }
+
+  #student-timetable th,
+  #student-timetable td,
+  #print-area th,
+  #print-area td {
+    border: 1px solid #ddd !important;
+    color: #000 !important;
+    background: white !important;
+  }
+
+  #student-timetable div,
+  #print-area div {
+    background: white !important;
+    color: #000 !important;
+    border-color: #ddd !important;
+  }
+
+  #student-timetable p,
+  #print-area p {
+    color: #333 !important;
+  }
+
+  button {
+    display: none !important;
+  }
+}

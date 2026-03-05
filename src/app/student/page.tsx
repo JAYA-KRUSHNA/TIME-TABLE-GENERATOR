@@ -93,6 +93,8 @@ export default function StudentDashboard() {
         const blob = new Blob([csv], { type: 'text/csv' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `timetable_${profile?.reg_no || 'student'}.csv`; a.click();
     };
 
+    const exportPDF = () => { window.print(); };
+
     const openConvo = async (convo: ConvoItem) => {
         setActiveConvo(convo);
         const res = await fetch(`/api/data?table=messages&conversation_id=${convo.id}`);
@@ -180,7 +182,10 @@ export default function StudentDashboard() {
                                     </span>
                                 </div>
                                 <button onClick={exportCSV} className="btn-primary" style={{ padding: '8px 16px', fontSize: 13 }}>
-                                    <span style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 6 }}><Download size={14} />Export CSV</span>
+                                    <span style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 6 }}><Download size={14} />CSV</span>
+                                </button>
+                                <button onClick={exportPDF} style={{ padding: '8px 16px', fontSize: 13, borderRadius: 8, border: '1px solid rgba(99,102,241,0.15)', background: 'rgba(99,102,241,0.06)', color: '#a5b4fc', cursor: 'pointer' }}>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Download size={14} />PDF</span>
                                 </button>
                             </div>
 
