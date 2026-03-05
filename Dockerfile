@@ -15,8 +15,9 @@ COPY . .
 # Build Next.js
 RUN npm run build
 
-# Create data directory for SQLite
-RUN mkdir -p /data
+# Copy existing database so the app starts with pre-loaded data
+RUN mkdir -p prisma
+COPY prisma/dev.db prisma/dev.db
 
 EXPOSE 3000
 
