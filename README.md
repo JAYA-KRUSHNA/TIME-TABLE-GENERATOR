@@ -199,7 +199,7 @@ optischedule/
 
 ## 📄 License
 
-This project is built for the academic hackathon at ANITS.
+This project is built for the academic hackathon at JNTU-A.
 
 ---
 
