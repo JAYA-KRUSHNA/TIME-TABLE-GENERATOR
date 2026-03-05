@@ -1,24 +1,37 @@
 import nodemailer from 'nodemailer';
 
+// Lazy-init: create transporter on first use (not at module load)
+// This ensures env vars are available at runtime, not just build time
 let transporter: nodemailer.Transporter | null = null;
+let transporterInitialized = false;
 
-try {
-  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-    transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: false,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-      connectionTimeout: 5000,  // 5 second connection timeout
-      socketTimeout: 5000,      // 5 second socket timeout
-      greetingTimeout: 5000,    // 5 second greeting timeout
-    });
+function getTransporter(): nodemailer.Transporter | null {
+  if (transporterInitialized) return transporter;
+  transporterInitialized = true;
+
+  try {
+    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+      transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: false,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+        connectionTimeout: 5000,
+        socketTimeout: 5000,
+        greetingTimeout: 5000,
+      });
+      console.log('✅ SMTP transporter created successfully');
+    } else {
+      console.warn('⚠ SMTP not configured — missing SMTP_HOST, SMTP_USER, or SMTP_PASS');
+    }
+  } catch (e) {
+    console.warn('SMTP transport creation failed:', e);
   }
-} catch (e) {
-  console.warn('SMTP transport creation failed:', e);
+
+  return transporter;
 }
 
 export function generateOTP(): string {
@@ -29,7 +42,8 @@ export async function sendOTPEmail(to: string, otp: string, name: string) {
   // Always log OTP to console for development/demo
   console.log(`\n📧 OTP for ${to}: ${otp}\n`);
 
-  if (!transporter) {
+  const smtp = getTransporter();
+  if (!smtp) {
     console.warn('SMTP not configured — OTP logged to console only');
     return;
   }
@@ -56,7 +70,7 @@ export async function sendOTPEmail(to: string, otp: string, name: string) {
   };
 
   try {
-    await transporter.sendMail(mailOptions);
+    await smtp.sendMail(mailOptions);
     console.log(`✅ OTP email sent to ${to}`);
   } catch (error) {
     console.error(`❌ Failed to send OTP email to ${to}:`, error);
@@ -67,7 +81,8 @@ export async function sendOTPEmail(to: string, otp: string, name: string) {
 export async function sendPasswordResetEmail(to: string, resetLink: string, name: string) {
   console.log(`\n🔑 Password reset link for ${to}: ${resetLink}\n`);
 
-  if (!transporter) {
+  const smtp = getTransporter();
+  if (!smtp) {
     console.warn('SMTP not configured — reset link logged to console only');
     return;
   }
@@ -93,7 +108,7 @@ export async function sendPasswordResetEmail(to: string, resetLink: string, name
   };
 
   try {
-    await transporter.sendMail(mailOptions);
+    await smtp.sendMail(mailOptions);
   } catch (error) {
     console.error(`❌ Failed to send reset email to ${to}:`, error);
   }
